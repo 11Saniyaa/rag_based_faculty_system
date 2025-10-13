@@ -1,0 +1,11 @@
+faculty_id,name,department,designation,max_hours_per_week,specialization,availability
+F001,Dr Pravin Futane,Computer Science,Professor,40,Machine Learning,Mon-Fri 9AM-5PM
+F002,Dr. Suruchi Dedgaonkar,Mathematics,Associate Professor,40,Statistics,Mon-Fri 9AM-5PM
+F003,Dr. Ratnmala Bhimanpallewar,Physics,Assistant Professor,40,Quantum Physics,Mon-Fri 8AM-4PM
+F004,Dr. Manohar K Kodmelwar,Computer Science,Professor,40,Data Science,Mon-Fri 9AM-5PM
+F005,Dr. Chudaman D Sukte,Mathematics,Associate Professor,40,Algebra,Mon-Fri 9AM-5PM
+F006,Dr. Chaitali R Shewale,Physics,Assistant Professor,40,Electronics,Mon-Fri 8AM-4PM
+F007,Swati B Patil,Computer Science,Assistant Professor,40,Software Engineering,Mon-Fri 9AM-5PM
+F008,Riddhi R. Mirajkar,Mathematics,Assistant Professor,40,Calculus,Mon-Fri 8AM-4PM
+F009,Sonali P Bhoite,Physics,Assistant Professor,40,Mechanics,Mon-Fri 8AM-4PM
+F010,Mahesh A Bhandari,Computer Science,Associate Professor,40,Networking,Mon-Fri 9AM-5PM
