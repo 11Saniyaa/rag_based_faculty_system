@@ -8,21 +8,13 @@ import logging
 import traceback
 import re
 from typing import List, Dict, Any, Optional, Tuple
-import chromadb
-from sentence_transformers import SentenceTransformer
-from langchain_community.llms import HuggingFacePipeline
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
 import torch
 import io
 import hashlib
 import time
 from functools import lru_cache
 
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,6 +24,43 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Optional imports - handle gracefully if not available
+try:
+    import chromadb
+    from langchain_community.vectorstores import Chroma
+    CHROMADB_AVAILABLE = True
+except (ImportError, Exception) as e:
+    CHROMADB_AVAILABLE = False
+    logger.warning(f"ChromaDB not available: {e}. Using FAISS vector store instead.")
+
+# FAISS for vector search (works with Python 3.14)
+try:
+    import faiss
+    import pickle
+    FAISS_AVAILABLE = True
+except ImportError:
+    FAISS_AVAILABLE = False
+    logger.warning("FAISS not available. Using mock vector store.")
+
+from sentence_transformers import SentenceTransformer
+try:
+    from langchain_community.llms import HuggingFacePipeline
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    try:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+    except ImportError:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+    try:
+        from langchain.chains import RetrievalQA
+        from langchain.prompts import PromptTemplate
+    except ImportError:
+        from langchain_core.prompts import PromptTemplate
+        RetrievalQA = None
+except ImportError as e:
+    logger.warning(f"Some LangChain components not available: {e}")
+    RecursiveCharacterTextSplitter = None
+    RetrievalQA = None
 
 # Set page config
 st.set_page_config(
@@ -300,7 +329,7 @@ class FacultyWorkloadAssistant:
         return pd.DataFrame(timetable_data)
     
     def setup_vectorstore(self):
-        """Setup vector store for RAG"""
+        """Setup vector store for RAG using FAISS (works with Python 3.14)"""
         try:
             # Create documents from faculty and timetable data
             documents = []
@@ -329,7 +358,57 @@ class FacultyWorkloadAssistant:
                 """
                 documents.append(doc)
             
-            # Create a simple mock vector store for now
+            # Try to use FAISS with SentenceTransformers for real semantic search
+            if FAISS_AVAILABLE:
+                try:
+                    logger.info("Setting up FAISS vector store with semantic embeddings...")
+                    
+                    # Initialize embedding model
+                    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                    
+                    # Generate embeddings for all documents
+                    embeddings = embedding_model.encode(documents, show_progress_bar=False)
+                    
+                    # Create FAISS index
+                    dimension = embeddings.shape[1]
+                    index = faiss.IndexFlatL2(dimension)  # L2 distance for similarity
+                    
+                    # Normalize embeddings for cosine similarity
+                    faiss.normalize_L2(embeddings)
+                    index.add(embeddings.astype('float32'))
+                    
+                    # Create FAISSVectorStore class
+                    class FAISSVectorStore:
+                        def __init__(self, docs, index, embedding_model):
+                            self.docs = docs
+                            self.index = index
+                            self.embedding_model = embedding_model
+                        
+                        def similarity_search(self, query, k=3):
+                            # Encode query
+                            query_embedding = self.embedding_model.encode([query], show_progress_bar=False)
+                            faiss.normalize_L2(query_embedding)
+                            
+                            # Search
+                            distances, indices = self.index.search(query_embedding.astype('float32'), k)
+                            
+                            # Return results
+                            results = []
+                            for idx in indices[0]:
+                                if idx < len(self.docs):
+                                    results.append(type('obj', (object,), {'page_content': self.docs[idx]}))
+                            
+                            return results
+                    
+                    self.vectorstore = FAISSVectorStore(documents, index, embedding_model)
+                    logger.info(f"FAISS vector store initialized with {len(documents)} documents")
+                    return True
+                    
+                except Exception as e:
+                    logger.warning(f"FAISS setup failed: {e}. Falling back to mock vector store.")
+                    # Fall through to mock vector store
+            
+            # Fallback: Create a simple mock vector store
             class MockVectorStore:
                 def __init__(self, docs):
                     self.docs = docs
@@ -344,8 +423,12 @@ class FacultyWorkloadAssistant:
                     return results[:k]
             
             self.vectorstore = MockVectorStore(documents)
+            logger.info(f"Mock vector store initialized with {len(documents)} documents")
             return True
+            
         except Exception as e:
+            logger.error(f"Error setting up vector store: {str(e)}")
+            logger.error(traceback.format_exc())
             st.error(f"Error setting up vector store: {str(e)}")
             return False
     
